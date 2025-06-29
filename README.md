@@ -1,18 +1,18 @@
 # LLM Remote Executor
 
-Простой, но мощный гибридный API-сервер на Node.js, который позволяет языковым моделям (LLM) безопасно взаимодействовать с файловой системой. Проект использует GET-запросы для простых операций и POST-запросы для надежной передачи больших объемов данных.
+A simple yet powerful hybrid API server built with Node.js that allows Large Language Models (LLMs) to securely interact with a file system. The project uses GET requests for simple operations and POST requests for reliably transferring large amounts of data.
 
-## Философия
+## Philosophy
 
-Этот экспериментальный проект — не замена IDE-инструментам, а предложение **альтернативной парадигмы** работы, где ИИ выступает не как "помощник", а как центральный "исполнитель" (агент), а вы — как оператор, предоставляющий ему доступ к инструментам. Это дает 100% контроль, прозрачность и свободу выбора любой языковой модели.
+This experimental project is not a replacement for IDE tools but rather an **alternative paradigm** where the AI acts not as an "assistant" but as a central "executor" or "agent", with you as the operator providing access to its tools. This approach grants 100% control, transparency, and the freedom to use any language model. The AI can increasingly be seen as a virtual machine with Docker-like contexts, capable of simulating any environment, even an IDE.
 
 ---
 
-## Часть 1: Локальная установка (Рекомендуемый способ)
+## Part 1: Local Setup (Recommended Method)
 
-### Шаг 1: Подготовка
-1.  Установите [Node.js](https://nodejs.org/) (версию LTS).
-2.  Создайте папку проекта и установите зависимости:
+### Step 1: Prerequisites
+1.  Install [Node.js](https://nodejs.org/) (LTS version).
+2.  Create a project folder and install dependencies:
     ```bash
     mkdir llm-remote-executor
     cd llm-remote-executor
@@ -20,11 +20,11 @@
     npm install express
     ```
 
-### Шаг 2: Создание файлов
+### Step 2: Create Files
 
-Создайте в папке проекта файлы `server.js` и `config.json`, скопировав их код из этого репозитория.
+Create `server.js` and `config.json` files in the project folder by copying the code from this repository.
 
-**`config.json` (Пример):**
+**`config.json` (Example):**
 ```json
 {
   "PORT": 3000,
@@ -33,56 +33,56 @@
 }
 ```
 
-### Шаг 3: Запуск
+### Step 3: Run the Server
 `node server.js`
 
 ---
 
-## Часть 2: Спецификация и Использование API
+## Part 2: API Specification and Usage
 
-### 1. Методы и Действия
+### 1. Methods and Actions
 
-- **`GET /api`**: Для простых операций (`list_dir`, `read_file`, `shell`) и для записи **небольших файлов (до ~2000 символов)**.
-- **`POST /api`**: Для надежной записи **больших файлов**.
+- **`GET /api`**: For simple operations (`list_dir`, `read_file`, `shell`) and for writing **small files (up to ~2000 characters)**.
+- **`POST /api`**: For reliably writing **large files**.
 
-### 2. Практические примеры `curl`
+### 2. Practical `curl` Examples
 
-**Получение списка файлов (GET):**
+**Listing files (GET):**
 ```bash
-curl "http://localhost:3000/api?token=ВАШ_ТОКЕН&action=list_dir"
+curl "http://localhost:3000/api?token=YOUR_TOKEN&action=list_dir"
 ```
 
-**Запись НЕБОЛЬШОГО файла (до ~2000 символов) методом GET:**
-Этот метод использует `Heredoc` (`<<'EOF'`) и является самым надежным способом передать через GET текст с любыми спецсимволами, не опасаясь ошибок терминала.
+**Writing a SMALL file (up to ~2000 chars) via GET:**
+This method uses `Heredoc` (`<<'EOF'`) and is the most reliable way to pass text with any special characters via GET without terminal errors.
 ```bash
-curl -G "http://localhost:3000/api?token=ВАШ_ТОКЕН&action=write_file&path=small-file.txt" \
+curl -G "http://localhost:3000/api?token=YOUR_TOKEN&action=write_file&path=small-file.txt" \
   --data-urlencode content@- <<'EOF'
-Произвольный текст с любыми спецсимволами, включая ' и " и !, длиной до ~2000 символов.
-Этот блок будет передан в файл как есть.
+Arbitrary text with any special characters, including ' and " and !, up to ~2000 characters long.
+This block will be written to the file as is.
 EOF
 ```
 
-**Запись БОЛЬШОГО файла (свыше 2000 символов) методом POST:**
-Это рекомендуемый, самый надежный и не имеющий ограничений по размеру способ записи файлов.
+**Writing a LARGE file (over 2000 chars) via POST:**
+This is the recommended, most reliable method for writing files, with no size limitations.
 ```bash
 curl -X POST "http://localhost:3000/api" \
 -H "Content-Type: application/json" \
 -d '{
-  "token": "ВАШ_ТОКЕН",
+  "token": "YOUR_TOKEN",
   "action": "write_file",
   "path": "large-file.md",
-  "content": "Сюда можно вставить очень большой и сложный текст...\n...который может занимать много строк.\nНикаких проблем с кодированием или длиной не будет."
+  "content": "You can insert very large and complex text here...\n...that can span multiple lines.\nThere will be no issues with encoding or length."
 }'
 ```
 
 ---
 
-## Часть 3: Рабочий процесс "Выполнение при посредничестве `curl`"
+## Part 3: The "User-Mediated `curl` Execution" Workflow
 
-Твое взаимодействие с сервером происходит по строгому циклу "План-Генерация-Ожидание".
+Your interaction with the server follows a strict "Plan-Generate-Await" cycle.
 
-1.  **Пользователь дает тебе задачу.**
-2.  **Ты формируешь ПЛАН ВЫПОЛНЕНИЯ.**
-3.  **Ты генерируешь ОДНУ `curl` команду** (используя GET или POST в зависимости от размера данных) для выполнения первого шага.
-4.  **Ты ожидаешь,** пока пользователь выполнит эту команду и предоставит тебе **ПОЛНЫЙ ВЫВОД** из терминала.
-5.  **Ты анализируешь результат** и переходишь к следующему шагу.
+1.  **The user gives you a task.**
+2.  **You create a PLAN OF EXECUTION.**
+3.  **You generate ONE `curl` command** (using GET or POST depending on data size) for the first step.
+4.  **You AWAIT** for the user to execute the command and provide the **ENTIRE terminal output**.
+5.  **You analyze the result** and proceed to the next step.
