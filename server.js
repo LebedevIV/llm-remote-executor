@@ -28,8 +28,14 @@ if (!fs.existsSync(BASE_DIR)){
     console.log(`Base directory created at: ${BASE_DIR}`);
 }
 
+// Middleware для POST-запросов
+// Увеличиваем лимит, чтобы поддерживать большие файлы
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.text({ limit: '50mb' }));
+
+
 const resolvePath = (userPath) => {
-    // Express УЖЕ декодирует userPath из req.query.path
     if (typeof userPath !== 'string') {
         return BASE_DIR;
     }
@@ -41,9 +47,9 @@ const resolvePath = (userPath) => {
     return finalPath;
 };
 
-app.get('/api', async (req, res) => {
-    // Express УЖЕ декодирует все значения в req.query
-    const { token, action, path: userPath, content, command } = req.query;
+// Общая функция обработки запросов
+const handleRequest = async (params, res) => {
+    const { token, action, path: userPath, content, command } = params;
 
     if (token !== SECRET_TOKEN) {
         return res.status(403).json({ error: 'Forbidden' });
@@ -56,16 +62,27 @@ app.get('/api', async (req, res) => {
         switch (action) {
             case 'write_file': {
                 const safePath = resolvePath(userPath);
-                // Просто используем `content`, т.к. Express его уже раскодировал
                 const fileContent = content || '';
+                
+                // Отладочная информация в консоли сервера
+                console.log(`Action: write_file, Path: ${userPath}, Content Length: ${fileContent.length}`);
+                
                 await fsp.mkdir(path.dirname(safePath), { recursive: true });
                 await fsp.writeFile(safePath, fileContent, 'utf8');
-                return res.status(200).json({ success: true, message: `File written to ${userPath}` });
+                return res.status(200).json({ 
+                    success: true, 
+                    message: `File written to ${userPath}`,
+                    contentLength: fileContent.length 
+                });
             }
             case 'read_file': {
                 const safePath = resolvePath(userPath);
                 const fileContent = await fsp.readFile(safePath, 'utf8');
-                return res.type('text/plain').send(fileContent);
+                // Для GET-запроса возвращаем как text/plain, для POST (если понадобится) - в JSON
+                if (res.req.method === 'GET') {
+                    return res.type('text/plain').send(fileContent);
+                }
+                return res.status(200).json({ success: true, content: fileContent });
             }
             case 'list_dir': {
                 const safePath = resolvePath(userPath);
@@ -73,7 +90,6 @@ app.get('/api', async (req, res) => {
                 return res.status(200).json({ success: true, files });
             }
             case 'shell': {
-                // Просто используем `command`, т.к. Express его уже раскодировал
                 const shellCommand = command || '';
                 exec(shellCommand, { cwd: BASE_DIR }, (error, stdout, stderr) => {
                     res.status(200).json({ stdout, stderr, error: error ? error.message : null });
@@ -84,12 +100,36 @@ app.get('/api', async (req, res) => {
                 return res.status(400).json({ error: 'Invalid action' });
         }
     } catch (err) {
+        console.error(err); // Выводим ошибку в консоль сервера для диагностики
         return res.status(500).json({ error: err.message });
     }
+};
+
+// Обработчик для GET-запросов (для простых операций)
+app.get('/api', async (req, res) => {
+    await handleRequest(req.query, res);
+});
+
+// Обработчик для POST-запросов (для сложных операций, например, записи файлов)
+app.post('/api', async (req, res) => {
+    // Определяем, откуда брать параметры, в зависимости от Content-Type
+    let params;
+    if (req.is('application/json')) {
+        params = req.body;
+    } else if (req.is('text/plain')) {
+        // Если кто-то отправит контент как чистый текст, а параметры в URL
+        params = { ...req.query, content: req.body };
+    } else {
+        // Для стандартных форм
+        params = { ...req.query, ...req.body };
+    }
+    
+    await handleRequest(params, res);
 });
 
 app.listen(PORT, '127.0.0.1', () => {
-    console.log(`LLM Remote Executor (Local Mode) is running.`);
+    console.log(`LLM Remote Executor (Enhanced Hybrid Mode) is running.`);
     console.log(`Listening on: http://localhost:${PORT}`);
     console.log(`Serving files in: ${BASE_DIR}`);
+    console.log(`Supports GET for simple actions and POST for file writing.`);
 });
