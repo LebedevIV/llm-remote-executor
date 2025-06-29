@@ -1,0 +1,8 @@
+# Node.js dependencies
+node_modules/
+
+# Configuration file with secrets
+config.json
+
+# Log files
+*.log
